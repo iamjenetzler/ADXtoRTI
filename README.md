@@ -11,9 +11,9 @@ This repo contains a PowerShell script to migrate the full schema from an ADX da
 7.  Update the powershell script to be able to find the Kusto .NET client libraries installed on your workstation.
 8.  Update the powershell script with you client_id (service principal id), client-secret, and tenant_id.
 9.  Provide the following variables:
-    a.  $workspaceName - the Fabric Workspace that will host your RTI Eventhouse
-    b.  $eventhouseName - the name of the Fabric Eventhouse that will host your KQL Database (if it doesn't exist the script will create it)
-    c.  $ADXClusterUri - the ClusterURI of the ADX instance to migrate
-    e.  $databaseName - the name of the ADX database to migrate (the same name will be used for your KQL Database)
+    -  **$workspaceName** - the Fabric Workspace that will host your RTI Eventhouse
+    -  **$eventhouseName** - the name of the Fabric Eventhouse that will host your KQL Database (if it doesn't exist the script will create it)
+    -  **$ADXClusterUri** - the ClusterURI of the ADX instance to migrate
+    -  **$databaseName** - the name of the ADX database to migrate (the same name will be used for your KQL Database)
     
 
