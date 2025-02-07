@@ -15,8 +15,8 @@ This repo contains a PowerShell script to migrate the full schema from an ADX da
 9.  Update the powershell script with you client_id (service principal id), client-secret, and tenant_id.
 10.  Provide the following variables:
         - **$workspaceName**: Fabric Workspace that will host your RTI Eventhouse
-        - **$eventhouseName**: name of the Fabric Eventhouse that will host your KQL Database (if it doesn't exist the script will create it)
+        - **$eventhouseName**: Fabric Eventhouse that will host your KQL Database (if it doesn't exist the script will create it)
         - **$ADXClusterUri**: ClusterURI of the ADX instance to migrate
-        - **$databaseName**: name of the ADX database to migrate (the same name will be used for your KQL Database)
+        - **$databaseName**: ADX database to migrate (the same name will be used for your KQL Database)
     
 
