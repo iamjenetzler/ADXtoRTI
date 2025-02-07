@@ -3,10 +3,6 @@ $env:CLIENT_ID = "your-client-id"
 $env:CLIENT_SECRET = "your-client-secret"
 $env:TENANT_ID = "your-tenant-id"
 
-$env:CLIENT_ID = "f0777bdc-c40f-421b-9ed9-abba2f43d425"
-$env:CLIENT_SECRET = "Z5G8Q~s2G.ZNxIqNsXhxgmnXayErdcOBXYZE5bYJ"
-$env:TENANT_ID = "2f250fde-b995-4c3b-a347-79dab0d3311b"
-
 # Retrieve service principal credentials from environment variables
 $clientId = $env:CLIENT_ID
 $clientSecret = $env:CLIENT_SECRET
