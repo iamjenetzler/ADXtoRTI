@@ -1,167 +1,164 @@
-u# Set environment variables in the current session
+# Install-Module -Name Microsoft.Azure.Kusto.Tools -Force
+# Import-Module Microsoft.Azure.Kusto.Tools
+
+# Use Kusto .NET client libraries from PowerShell to run management commands
+[System.Reflection.Assembly]::LoadFrom("C:\Users\jeetzler\.nuget\packages\microsoft.azure.kusto.tools\13.0.0\tools\net8.0\Kusto.Data.dll")
+
+# Set environment variables in the current session
 $env:CLIENT_ID = "your-client-id"
 $env:CLIENT_SECRET = "your-client-secret"
 $env:TENANT_ID = "your-tenant-id"
+
+# Define additional variables
+$ADXclusterUri = "https://myadxcluster7.westus3.kusto.windows.net"
+$databaseName = "ContosoSales"
+$workspaceName = "Migration to RTI"
+$eventhouseName = "Eventhouse"
 
 # Retrieve service principal credentials from environment variables
 $clientId = $env:CLIENT_ID
 $clientSecret = $env:CLIENT_SECRET
 $tenantId = $env:TENANT_ID
-   
-# Get the ADX access token
-$body = @{
-    grant_type    = "client_credentials"
-    client_id     = $clientId
-    client_secret = $clientSecret
-    resource      = $ADXclusterUri
-}
 
-$tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" -ContentType "application/x-www-form-urlencoded" -Body $body
-$adxToken = $tokenResponse.access_token
-
-$adxHeaders = @{
-    "Authorization" = "Bearer $adxToken"
-    "Content-Type"  = "application/json"
+# Function to get access token
+function Get-AccessToken {
+    param (
+        [string]$clientId,
+        [string]$clientSecret,
+        [string]$tenantId,
+        [string]$resource
+    )
+    $body = @{
+        grant_type    = "client_credentials"
+        client_id     = $clientId
+        client_secret = $clientSecret
+        resource      = $resource
+    }
+    $response = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" -ContentType "application/x-www-form-urlencoded" -Body $body
+    return $response.access_token
 }
 
 # Get the Fabric access token
-$body = @{
-    grant_type    = "client_credentials"
-    client_id     = $clientId
-    client_secret = $clientSecret
-    resource      = "https://api.fabric.microsoft.com"
-}
-
-$tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" -ContentType "application/x-www-form-urlencoded" -Body $body
-$fabricToken = $tokenResponse.access_token
+$fabricToken = Get-AccessToken -clientId $clientId -clientSecret $clientSecret -tenantId $tenantId -resource "https://api.fabric.microsoft.com"
 
 $fabricHeaders = @{
     "Authorization" = "Bearer $fabricToken"
     "Content-Type"  = "application/json"
 }
 
+# Connect to source cluster and database
+$kcsbAdx = New-Object Kusto.Data.KustoConnectionStringBuilder($ADXclusterUri, $databaseName)
+$kcsbAdx = $kcsbadx.WithAadApplicationKeyAuthentication($clientId, $clientSecret, $tenantId)
+$adminProviderAdx = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsbAdx)
+$queryProviderAdx = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslQueryProvider($kcsbAdx)
+
+# Get the workspace ID from the workspace name
+$workspacesAPI = "https://api.fabric.microsoft.com/v1/workspaces"
+$workspacesResponse = Invoke-RestMethod -Uri $workspacesAPI -Headers $fabricHeaders -Method Get
+
+$workspace = $workspacesResponse.value | Where-Object { $_.displayName -eq $workspaceName }
+
+if ($workspace) {
+    $workspaceId = $workspace.id
+    Write-Output "Workspace ID for '$workspaceName' is $workspaceId"
+} else {
+    Write-Error "Workspace '$workspaceName' not found."
+    return
+}
+
 # Add service principal as admin to source database
 $addAdminQuery = ".add database $databaseName admins ('aadapp=$clientId')"
+$reader = $adminProviderAdx.ExecuteControlCommand($addAdminQuery)
+Write-Output "Added admin to source database"
 
-$body = @{
-    "db"  = $databaseName
-    "csl" = $addAdminQuery
-} | ConvertTo-Json
-$response = Invoke-RestMethod -Uri "$ADXclusterUri/v1/rest/mgmt" -Method Post -Headers $adxHeaders -Body $body
-Write-Output "Added admin to target database: $($response | ConvertTo-Json -Depth 10)"
-
-# Create an Eventhouse    
-$ehbody = @{
-'displayName' = $eventhouseName
+# Create an Eventhouse
+$eventhouseBody = @{
+    'displayName' = $eventhouseName
 } | ConvertTo-Json -Depth 1
 
-$eventhouseAPI = "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/eventhouses" 
-
-# Make the API request to get the list of eventhouses
-$response = Invoke-RestMethod -Uri $eventhouseAPI -Headers $fabricHeaders -Method Get
+$eventhouseAPI = "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/eventhouses"
+$eventhouseResponse = Invoke-RestMethod -Uri $eventhouseAPI -Headers $fabricHeaders -Method Get
 
 # Check if the eventhouse exists
-$eventhouseExists = $response.value | Where-Object { $_.displayName -eq $eventhouseName }
+$response = $eventhouseResponse.value | Where-Object { $_.displayName -eq $eventhouseName }
 
-if ($eventhouseExists) {
-    Write-Output "Eventhouse '$eventhouseName' exists in your workspace."   
-    $eventhouseId= ($eventhouseExists.id).ToString()
-    $queryServiceURI = ($eventhouseExists.properties.queryServiceUri).ToString()
+if ($response) {
+    Write-Output "Eventhouse '$eventhouseName' exists in your workspace."
+    
 } else {
     Write-Output "Eventhouse '$eventhouseName' does not exist in your workspace."
     Write-Output "Creating Eventhouse $eventhouseName"
-    $eventhouseCreate = Invoke-RestMethod -Uri $eventhouseAPI -Method POST -Headers $fabricHeaders -Body $ehbody 
-    $eventhouseId= ($eventhouseCreate.id).ToString()    
-    $queryServiceURI = ($eventhouseCreate.properties.queryServiceUri).ToString()
+    $response = Invoke-RestMethod -Uri $eventhouseAPI -Method POST -Headers $fabricHeaders -Body $eventhouseBody   
 }
+
+$eventhouseId = $response.id
+$queryServiceURI = $response.properties.queryServiceUri
 
 # Create KQL Database in above Eventhouse
 Write-Output "Creating KQL Database"
-$kqlDBName = $databaseName
 
-# Create body of request
-$kqlbody = @{       
-            'displayName' = $kqlDBName;
-            'creationPayload'= @{
-            'databaseType' = "ReadWrite";
-            'parentEventhouseItemId' = $eventhouseId}
-             } | ConvertTo-Json -Depth 2
+$kqlDBBody = @{
+    'displayName' = $databaseName
+    'creationPayload' = @{
+        'databaseType' = "ReadWrite"
+        'parentEventhouseItemId' = $eventhouseId
+    }
+} | ConvertTo-Json -Depth 2
 
 $kqlDBAPI = "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/kqlDatabases"
+$kqlDbResponse = Invoke-RestMethod -Uri $kqlDBAPI -Headers $fabricHeaders -Method Get 
 
-# Check if the kql db exists
-$kqlDbExists = $response.value | Where-Object { $_.displayName -eq $kqlDBName }
+$response = $kqlDbResponse.value | Where-Object { $_.displayName -eq $databaseName }
 
-if ($kqlDbExists) {
-    Write-Output "KQL database '$kqlDBName' exists in your workspace."       
+if ($response) {
+    Write-Output "KQL database '$databaseName' exists in your workspace."
 } else {
-    Write-Output "KQL database '$kqlDBName' does not exist in your workspace."
-    Write-Output "Creating database $kqlDBName"
-    Invoke-RestMethod -Uri $kqlDBAPI -Method POST -Body $kqlbody -Headers $fabricHeaders -verbose   
+    Write-Output "KQL database '$databaseName' does not exist in your workspace."
+    Write-Output "Creating database $databaseName"
+    $response = Invoke-RestMethod -Uri $kqlDBAPI -Method POST -Body $kqlDBBody -Headers $fabricHeaders    
 }
+
+Start-Sleep -Seconds 20  # Give time for the database to be created
+
+# Re-fetch the database list to get the latest state
+$kqlDbResponse = Invoke-RestMethod -Uri $kqlDBAPI -Headers $fabricHeaders -Method Get
+$response = $kqlDbResponse.value | Where-Object { $_.displayName -eq $databaseName }
+$databaseId = $response.id
+
+# Ensure the database ID is correctly assigned
+if ($databaseId) {
+    Write-Output "Database ID: $databaseId"
+} else {
+    Write-Output "Failed to retrieve the database ID."
+}
+
+ # Connect to fabric rti cluster and database
+ $kcsbRti = New-Object Kusto.Data.KustoConnectionStringBuilder($queryServiceURI, $databaseName)
+ $adminProviderRti = [Kusto.Data.Net.Client.KustoClientFactory]::CreateCslAdminProvider($kcsbRti)
+
+ # Add service principal as admin to rti database
+ $reader = $adminProviderRti.ExecuteControlCommand($addAdminQuery)
+ Write-Output "Added admin to target database"         
 
 # Get the schema from ADX
 $cslQuery = ".show database schema as csl script"
-$body = @{
-    "db"  = $databaseName
-    "csl" = $cslQuery
-} | ConvertTo-Json
+$reader = $queryProviderAdx.ExecuteControlCommand($cslQuery)
+$reader.Read()
 
-$adxResponse = Invoke-RestMethod -Uri "$ADXclusterUri/v1/rest/query" -Method Post -Headers $adxHeaders -Body $body
-# Write-Output "Query response: $($response | ConvertTo-Json -Depth 10)"
-
-
-# Authenticating to KQL DB data plane to avoid 401 unauthorized error
-$body = @{
-    grant_type    = "client_credentials"
-    client_id     = $clientId
-    client_secret = $clientSecret
-    resource      = "https://api.kusto.windows.net"
-}
-
-$tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" -ContentType "application/x-www-form-urlencoded" -Body $body
-$kustoToken = $tokenResponse.access_token
-
-$kustoHeaders = @{
-    "Authorization" = "Bearer $kustoToken"
-    "Content-Type"  = "application/json"
-}
-
-# Add service principal as admin to kql database - Must be none manually for now because this isn't working
-# $addAdminQuery = ".add database $kqlDBName admins ('aadapp=$clientId')"
-
-# $body = @{ 
-#     "db"  = $kqlDBName
-#     "csl" = $addAdminQuery
-# } | ConvertTo-Json
-# $response = Invoke-RestMethod -Uri "$queryServiceURI/v1/rest/mgmt" -Method POST -Headers $kustoHeaders -Body $body
-# Write-Output "Added admin to target database: $($response | ConvertTo-Json -Depth 10)"
+$adxSchemaResponse = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
+Write-Ouput $adxSchemaResponse
 
 # Execute each row (query) individually
-$adxResponse.Tables[0].Rows | ForEach-Object {
+$adxSchemaResponse.Rows | ForEach-Object {
     $individualQuery = $_[0]
     $executeScript = $individualQuery
 
-    # Construct the JSON for the execute body
-    $executeBody = @{
-        "db"  = $databaseName
-        "csl" = $executeScript
-    } | ConvertTo-Json 
-
-    # Write-Output "Execute body: $executeBody"
-
-    try {
-        $executeResponse = Invoke-RestMethod -Uri "$queryServiceURI/v1/rest/mgmt" -Method Post -Headers $kustoHeaders -Body $executeBody
+    try {        
+        $reader = $adminProviderAdx.ExecuteControlCommand($executeScript)        
         Write-Output "Executed script: $individualQuery"
-        Write-Output "Query response: $($executeResponse | ConvertTo-Json -Depth 10)"
-    }
-    catch {
+        Write-Output $reader.Read()
+        
+    } catch {
         Write-Error "Failed to execute script: $individualQuery. Error: $_"
     }
 }
-     
-
-
-
-
-
