@@ -1,4 +1,4 @@
-# ADXtoRTI
+# Migrate ADX schema to Fabric RTI
 This repo contains a PowerShell script to migrate the full schema from an ADX database to a Fabric RTI KQL database.
 
 ## Prerequisites
