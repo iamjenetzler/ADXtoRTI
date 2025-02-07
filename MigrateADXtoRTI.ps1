@@ -1,4 +1,4 @@
-# Set environment variables in the current session
+u# Set environment variables in the current session
 $env:CLIENT_ID = "your-client-id"
 $env:CLIENT_SECRET = "your-client-secret"
 $env:TENANT_ID = "your-tenant-id"
@@ -127,7 +127,7 @@ $kustoHeaders = @{
     "Content-Type"  = "application/json"
 }
 
-# Add service principal as admin to kql database - Must be none manually for now this isn't working
+# Add service principal as admin to kql database - Must be none manually for now because this isn't working
 # $addAdminQuery = ".add database $kqlDBName admins ('aadapp=$clientId')"
 
 # $body = @{ 
