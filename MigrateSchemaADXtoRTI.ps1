@@ -5,13 +5,13 @@
 [System.Reflection.Assembly]::LoadFrom("C:\Users\jeetzler\.nuget\packages\microsoft.azure.kusto.tools\13.0.0\tools\net8.0\Kusto.Data.dll")
 
 # Set environment variables in the current session
-$env:CLIENT_ID = "your-client-id"
-$env:CLIENT_SECRET = "your-client-secret"
-$env:TENANT_ID = "your-tenant-id"
+$env:CLIENT_ID = "<yourappclientid>"
+$env:CLIENT_SECRET = "<yourappsecret>"
+$env:TENANT_ID = "<yourtenantid>"
 
 # Define additional variables
 $ADXclusterUri = "https://myadxcluster7.westus3.kusto.windows.net"
-$databaseName = "ContosoSales"
+$databaseName = "sampledatabase"
 $workspaceName = "Migration to RTI"
 $eventhouseName = "Eventhouse"
 
@@ -93,6 +93,7 @@ if ($response) {
 
 $eventhouseId = $response.id
 $queryServiceURI = $response.properties.queryServiceUri
+# $queryServiceURI = $response.properties.$adminProviderRti
 
 # Create KQL Database in above Eventhouse
 Write-Output "Creating KQL Database"
@@ -146,7 +147,7 @@ $reader = $queryProviderAdx.ExecuteControlCommand($cslQuery)
 $reader.Read()
 
 $adxSchemaResponse = [Kusto.Cloud.Platform.Data.ExtendedDataReader]::ToDataSet($reader).Tables[0]
-Write-Ouput $adxSchemaResponse
+# Write-Ouput $adxSchemaResponse
 
 # Execute each row (query) individually
 $adxSchemaResponse.Rows | ForEach-Object {
@@ -154,7 +155,7 @@ $adxSchemaResponse.Rows | ForEach-Object {
     $executeScript = $individualQuery
 
     try {        
-        $reader = $adminProviderAdx.ExecuteControlCommand($executeScript)        
+        $reader = $adminProviderRti.ExecuteControlCommand($executeScript)        
         Write-Output "Executed script: $individualQuery"
         Write-Output $reader.Read()
         
